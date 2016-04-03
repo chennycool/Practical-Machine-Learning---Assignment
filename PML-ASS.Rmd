@@ -1,0 +1,142 @@
+---
+title: "Practical Machine Learning - Assignment"
+author: "Chenny"
+date: "03/30/2016"
+output: html_document
+---
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data Processing and Analysis
+
+The training and testing datasets used in the analysis may be found as follows:
+
+Training dataset:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Testing dataset:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(knitr)
+```
+
+
+First, loading dataset:
+```{r}
+training <- read.csv(file="pml-training.csv",na.strings=c("NA", ""),header=TRUE)
+dim(training)
+```
+
+```{r}
+testing <- read.csv(file="pml-testing.csv",na.strings=c("NA", ""),header=TRUE)
+dim(testing)
+```
+
+Train dataset
+```{r}
+inTrain <- createDataPartition(training$classe, p=0.75, list=FALSE)
+SubTraining <- training[inTrain, ]
+SubTesting <- training[-inTrain, ]
+dim(SubTraining)
+dim(SubTesting)
+```
+
+Remove null data
+```{r}
+nzv <- nearZeroVar(SubTraining, saveMetrics=TRUE)
+SubTraining <- SubTraining[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(SubTesting,saveMetrics=TRUE)
+SubTesting <- SubTesting[,nzv$nzv==FALSE]
+```
+
+Romve first column
+```{r}
+SubTraining <- SubTraining[c(-1)]
+dim(SubTraining)
+```
+
+Remove variables that has more than 60% NA.
+```{r}
+removeNA <- SubTraining
+for(i in 1:length(SubTraining)) {
+    if( sum( is.na( SubTraining[, i] ) ) /nrow(SubTraining) >= .7) {
+        for(j in 1:length(removeNA)) {
+            if( length( grep(names(SubTraining[i]), names(removeNA)[j]) ) == 1)  {
+                removeNA <- removeNA[ , -j]
+            }   
+        } 
+    }
+}
+SubTraining <- removeNA
+rm (removeNA)
+```
+
+Transform dataset
+```{r}
+matchCol<- colnames(SubTraining)
+matchCol2 <- colnames(SubTraining[ , -58])
+SubTesting <- SubTesting [matchCol]
+testing <- testing [matchCol2]
+dim(SubTesting)
+dim(testing)
+```
+
+Coerce the data into the same type
+```{r}
+for (i in 1:length(testing) ) {
+    for(j in 1:length(SubTraining)) {
+        if( length( grep(names(SubTraining[i]), names(testing)[j]) ) == 1)  {
+            class(testing[j]) <- class(SubTraining[i])
+        }      
+    }      
+}
+testing <- rbind(SubTraining[2, -58] , testing)
+testing <- testing[-1,]
+
+```
+
+Predict with decision trees
+```{r}
+set.seed(2016)
+modFitDT <- rpart(classe ~ ., data=SubTraining, method="class")
+fancyRpartPlot(modFitDT)
+
+```
+
+```{r}
+predictDT <- predict(modFitDT, SubTesting, type = "class")
+TreeDT <- confusionMatrix(predictDT, SubTesting$classe)
+TreeDT
+```
+
+```{r}
+plot(TreeDT$table, col = TreeDT$byClass, main = paste("Decision Tree Confusion Matrix: Accuracy =", round(TreeDT$overall['Accuracy'], 4)))
+```
+
+Prediction with Random Forests
+```{r}
+modFitRF <- randomForest(classe ~ ., data=SubTraining)
+predictRF <- predict(modFitRF, SubTesting, type = "class")
+TreeRF <- confusionMatrix(predictRF, SubTesting$classe)
+TreeRF
+plot (modFitRF)
+plot(TreeRF$table, col = TreeRF$byClass, main = paste("Random Forest Confusion Matrix: Accuracy =", round(TreeRF$overall['Accuracy'], 4)))
+```
+
+Predicting Results on the Test Data
+Random Forests gave an better Accuracy in the SubTesting dataset. 
+```{r}
+predictRF2 <- predict(modFitRF, testing, type="class")
+predictRF2
+```
+
